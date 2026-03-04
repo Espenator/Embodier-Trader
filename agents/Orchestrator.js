@@ -1,217 +1,135 @@
-/**
- * Orchestrator.js — Agent Spawner & Signal Aggregator
- * 
- * The Orchestrator is the central brain of the Embodier Trader system.
- * It spawns trading agents for each ticker, feeds them market data,
- * collects their signals, and produces a weighted consensus signal.
- * 
- * Inspired by smarttrading.club's multi-indicator dashboard approach
- * where each metric (RSI, BBV, Trend, EMA, Pattern, Volume, Volatility,
- * Momentum, Sector Sentiment) contributes to an overall trading decision.
- * 
- * 9 agents per ticker = comprehensive coverage matching smarttrading.club's
- * full analysis suite.
- */
-const RSIAgent = typeof require !== 'undefined' ? require('./RSIAgent') : window.RSIAgent;
-const BBVAgent = typeof require !== 'undefined' ? require('./BBVAgent') : window.BBVAgent;
-const TrendAgent = typeof require !== 'undefined' ? require('./TrendAgent') : window.TrendAgent;
-const MomentumAgent = typeof require !== 'undefined' ? require('./MomentumAgent') : window.MomentumAgent;
-const VolatilityAgent = typeof require !== 'undefined' ? require('./VolatilityAgent') : window.VolatilityAgent;
-const PatternAgent = typeof require !== 'undefined' ? require('./PatternAgent') : window.PatternAgent;
-const VolumeAgent = typeof require !== 'undefined' ? require('./VolumeAgent') : window.VolumeAgent;
-const SectorSentimentAgent = typeof require !== 'undefined' ? require('./SectorSentimentAgent') : window.SectorSentimentAgent;
-const EMATrendAgent = typeof require !== 'undefined' ? require('./EMATrendAgent') : window.EMATrendAgent;
+const AgentBase = (typeof require !== 'undefined') ? require('./core/AgentBase') : window.AgentBase;
+const RSIAgent = (typeof require !== 'undefined') ? require('./RSIAgent') : window.RSIAgent;
+const BBVAgent = (typeof require !== 'undefined') ? require('./BBVAgent') : window.BBVAgent;
+const TrendAgent = (typeof require !== 'undefined') ? require('./TrendAgent') : window.TrendAgent;
+const MomentumAgent = (typeof require !== 'undefined') ? require('./MomentumAgent') : window.MomentumAgent;
+const VolatilityAgent = (typeof require !== 'undefined') ? require('./VolatilityAgent') : window.VolatilityAgent;
+const PatternAgent = (typeof require !== 'undefined') ? require('./PatternAgent') : window.PatternAgent;
+const VolumeAgent = (typeof require !== 'undefined') ? require('./VolumeAgent') : window.VolumeAgent;
+const SectorSentimentAgent = (typeof require !== 'undefined') ? require('./SectorSentimentAgent') : window.SectorSentimentAgent;
+const EMATrendAgent = (typeof require !== 'undefined') ? require('./EMATrendAgent') : window.EMATrendAgent;
+const IntermarketAgent = (typeof require !== 'undefined') ? require('./IntermarketAgent') : window.IntermarketAgent;
+const EarningsCatalystAgent = (typeof require !== 'undefined') ? require('./EarningsCatalystAgent') : window.EarningsCatalystAgent;
+const RelativeStrengthAgent = (typeof require !== 'undefined') ? require('./RelativeStrengthAgent') : window.RelativeStrengthAgent;
+const CycleTimingAgent = (typeof require !== 'undefined') ? require('./CycleTimingAgent') : window.CycleTimingAgent;
 
 class Orchestrator {
-      constructor(config = {}) {
-              this.tickers = config.tickers || [];
-              this.agents = {};  // { ticker: [agent1, agent2, ...] }
-        this.signals = {}; // { ticker: { consensus, agents: [...] } }
-        this.weights = config.weights || {
-                  RSIAgent: 1.0,
-                  BBVAgent: 0.9,
-                  TrendAgent: 1.2,
-                  MomentumAgent: 1.0,
-                  VolatilityAgent: 0.7,
-                  PatternAgent: 1.1,
-                  VolumeAgent: 0.8,
-                  SectorSentimentAgent: 0.9,
-                  EMATrendAgent: 1.1
-        };
-              this.history = [];  // recent consensus signals
-        this.maxHistory = config.maxHistory || 100;
-      }
+        constructor(config = {}) {
+                  this.config = config;
+                  this.agentWeights = config.agentWeights || {
+                              RSIAgent: 1.0,
+                              BBVAgent: 0.9,
+                              TrendAgent: 1.2,
+                              MomentumAgent: 1.0,
+                              VolatilityAgent: 0.7,
+                              PatternAgent: 1.1,
+                              VolumeAgent: 0.8,
+                              SectorSentimentAgent: 0.9,
+                              EMATrendAgent: 1.1,
+                              IntermarketAgent: 1.0,
+                              EarningsCatalystAgent: 0.8,
+                              RelativeStrengthAgent: 1.0,
+                              CycleTimingAgent: 0.7
+                  };
+                  this.tickers = new Map();
+        }
 
-  /**
-       * Spawn a full agent suite for a ticker.
-       * 9 agents covering every dimension of smarttrading.club's analysis.
-       */
   spawnAgents(ticker) {
-          const agentConfigs = [
-              { Class: RSIAgent, name: 'RSIAgent' },
-              { Class: BBVAgent, name: 'BBVAgent' },
-              { Class: TrendAgent, name: 'TrendAgent' },
-              { Class: EMATrendAgent, name: 'EMATrendAgent' },
-              { Class: MomentumAgent, name: 'MomentumAgent' },
-              { Class: VolatilityAgent, name: 'VolatilityAgent' },
-              { Class: PatternAgent, name: 'PatternAgent' },
-              { Class: VolumeAgent, name: 'VolumeAgent' },
-              { Class: SectorSentimentAgent, name: 'SectorSentimentAgent' }
-                  ];
-
-        this.agents[ticker] = agentConfigs.map(({ Class, name }) => {
-                  const agent = new Class({ ticker, name: `${name}:${ticker}` });
-                  agent.init();
-                  return agent;
-        });
-
-        if (!this.tickers.includes(ticker)) {
-                  this.tickers.push(ticker);
-        }
-
-        return this.agents[ticker];
+            if (this.tickers.has(ticker)) return this.tickers.get(ticker);
+            const agents = [
+                        new RSIAgent(ticker, this.config.rsi),
+                        new BBVAgent(ticker, this.config.bbv),
+                        new TrendAgent(ticker, this.config.trend),
+                        new MomentumAgent(ticker, this.config.momentum),
+                        new VolatilityAgent(ticker, this.config.volatility),
+                        new PatternAgent(ticker, this.config.pattern),
+                        new VolumeAgent(ticker, this.config.volume),
+                        new SectorSentimentAgent(ticker, this.config.sectorSentiment),
+                        new EMATrendAgent(ticker, this.config.emaTrend),
+                        new IntermarketAgent(ticker, this.config.intermarket),
+                        new EarningsCatalystAgent(ticker, this.config.earningsCatalyst),
+                        new RelativeStrengthAgent(ticker, this.config.relativeStrength),
+                        new CycleTimingAgent(ticker, this.config.cycleTiming)
+                      ];
+            this.tickers.set(ticker, agents);
+            return agents;
   }
 
-  /**
-       * Run all agents for a ticker with the given market data.
-       * Returns a consensus signal.
-       */
-  run(ticker, data) {
-          if (!this.agents[ticker]) {
-                    this.spawnAgents(ticker);
+  async analyze(ticker, data) {
+            const agents = this.spawnAgents(ticker);
+            const results = [];
+
+          for (const agent of agents) {
+                      try {
+                                    await agent.init();
+                                    const signal = agent.compute(data);
+                                    results.push({ agent: agent.name, signal });
+                      } catch (err) {
+                                    console.error(`[Orchestrator] ${agent.name} failed for ${ticker}:`, err.message);
+                                    results.push({ agent: agent.name, signal: { action: 'hold', strength: 0, reason: 'error', metrics: {} } });
+                      }
           }
 
-        const agentSignals = [];
-
-        for (const agent of this.agents[ticker]) {
-                  const signal = agent.run(data);
-                  if (signal) {
-                              agentSignals.push({
-                                            name: agent.name,
-                                            signal,
-                                            weight: this.weights[agent.name.split(':')[0]] || 1.0,
-                                            computeMs: agent.lastComputeTime
-                              });
-                  }
-        }
-
-        const consensus = this._computeConsensus(agentSignals);
-
-        this.signals[ticker] = {
-                  ticker,
-                  timestamp: Date.now(),
-                  consensus,
-                  agents: agentSignals
-        };
-
-        // Track history
-        this.history.push({ ticker, timestamp: Date.now(), ...consensus });
-          if (this.history.length > this.maxHistory) {
-                    this.history = this.history.slice(-this.maxHistory);
-          }
-
-        return this.signals[ticker];
+          const consensus = this.aggregate(results);
+            return { ticker, agents: results, consensus };
   }
 
-  /**
-       * Weighted consensus from all agent signals.
-       * Uses a scoring system similar to smarttrading.club's multi-column
-       * dashboard where each indicator votes independently.
-       */
-  _computeConsensus(agentSignals) {
-          if (agentSignals.length === 0) {
-                    return { action: 'hold', confidence: 0, reason: 'No agent signals' };
+  aggregate(results) {
+            let buyScore = 0, sellScore = 0, totalWeight = 0;
+            const reasons = [];
+
+          for (const { agent, signal } of results) {
+                      const w = this.agentWeights[agent] || 1.0;
+                      totalWeight += w;
+                      if (signal.action === 'buy') {
+                                    buyScore += signal.strength * w;
+                      } else if (signal.action === 'sell') {
+                                    sellScore += signal.strength * w;
+                      }
+                      if (signal.strength > 0.3) {
+                                    reasons.push(`${agent}:${signal.action}(${signal.strength.toFixed(2)})`);
+                      }
           }
 
-        let buyScore = 0, sellScore = 0, totalWeight = 0;
-          const reasons = [];
+          const netScore = totalWeight > 0 ? (buyScore - sellScore) / totalWeight : 0;
+            const confidence = totalWeight > 0 ? (buyScore + sellScore) / totalWeight : 0;
 
-        for (const { name, signal, weight } of agentSignals) {
-                  const w = weight * signal.strength;
-                  totalWeight += weight;
+          let action = 'hold';
+            if (netScore > 0.15) action = 'buy';
+            else if (netScore < -0.15) action = 'sell';
 
-            if (signal.action === 'buy') {
-                        buyScore += w;
-                        if (signal.strength >= 0.5) reasons.push(`${name}: ${signal.reason}`);
-            } else if (signal.action === 'sell') {
-                        sellScore += w;
-                        if (signal.strength >= 0.5) reasons.push(`${name}: ${signal.reason}`);
-            }
-        }
+          const agreeCount = results.filter(r => r.signal.action === action && r.signal.strength > 0.2).length;
+            const unanimity = results.length > 0 ? agreeCount / results.length : 0;
 
-        const netScore = totalWeight > 0 ? (buyScore - sellScore) / totalWeight : 0;
-          const confidence = Math.abs(netScore);
-
-        let action = 'hold';
-          if (netScore > 0.15) action = 'buy';
-          else if (netScore < -0.15) action = 'sell';
-
-        return {
-                  action,
-                  confidence: Math.min(1, confidence),
-                  netScore: netScore.toFixed(3),
-                  buyScore: buyScore.toFixed(3),
-                  sellScore: sellScore.toFixed(3),
-                  agentCount: agentSignals.length,
-                  reasons
-        };
-  }
-
-  /**
-       * Run all tickers.
-       */
-  runAll(dataByTicker) {
-          const results = {};
-          for (const ticker of this.tickers) {
-                    if (dataByTicker[ticker]) {
-                                results[ticker] = this.run(ticker, dataByTicker[ticker]);
-                    }
-          }
-          return results;
-  }
-
-  /**
-       * Get dashboard status for all agents across all tickers.
-       */
-  getStatus() {
-          const status = {};
-          for (const ticker of this.tickers) {
-                    status[ticker] = {
-                                signal: this.signals[ticker] || null,
-                                agents: (this.agents[ticker] || []).map(a => a.getStatus())
-                    };
-          }
           return {
-                    tickers: this.tickers,
-                    agentCount: Object.values(this.agents).reduce((sum, arr) => sum + arr.length, 0),
-                    status
+                      action,
+                      netScore: +netScore.toFixed(4),
+                      confidence: +confidence.toFixed(4),
+                      buyScore: +buyScore.toFixed(4),
+                      sellScore: +sellScore.toFixed(4),
+                      unanimity: +unanimity.toFixed(3),
+                      agentsAgreeing: agreeCount,
+                      totalAgents: results.length,
+                      topReasons: reasons.slice(0, 5),
+                      timestamp: Date.now()
           };
   }
 
-  /**
-       * Destroy all agents for a ticker.
-       */
-  removeTicker(ticker) {
-          if (this.agents[ticker]) {
-                    this.agents[ticker].forEach(a => a.destroy());
-                    delete this.agents[ticker];
-          }
-          delete this.signals[ticker];
-          this.tickers = this.tickers.filter(t => t !== ticker);
+  removeAgents(ticker) {
+            if (this.tickers.has(ticker)) {
+                        const agents = this.tickers.get(ticker);
+                        agents.forEach(a => { if (a.destroy) a.destroy(); });
+                        this.tickers.delete(ticker);
+            }
   }
 
-  /**
-       * Destroy everything.
-       */
-  shutdown() {
-          for (const ticker of [...this.tickers]) {
-                    this.removeTicker(ticker);
-          }
-          this.history = [];
+  listTickers() {
+            return [...this.tickers.keys()];
+  }
+
+  getAgentNames() {
+            return Object.keys(this.agentWeights);
   }
 }
 
-// Export for both browser and Node
-if (typeof module !== 'undefined' && module.exports) {
-      module.exports = Orchestrator;
-}
+if (typeof module !== 'undefined' && module.exports) { module.exports = Orchestrator; }
